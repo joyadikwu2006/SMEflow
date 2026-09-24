@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -63,10 +63,12 @@ def get_businesses(db: Session = Depends(get_db)):
 @app.get("/businesses/{business_id}")
 def get_business(business_id: int, db: Session = Depends(get_db)):
     business = db.query(Business).filter(Business.id == business_id).first()
-
+    
     if not business:
-        return {"message": "Business not found"}
-
+        raise HTTPException(
+            status_code=404,
+            detail="Business not found"
+        )
     return business    
 
 @app.put("/businesses/{business_id}")
@@ -78,8 +80,10 @@ def update_business(
     db_business = db.query(Business).filter(Business.id == business_id).first()
 
     if not db_business:
-        return {"message": "Business not found"}
-
+       raise HTTPException(
+        status_code=404,
+        detail="Business not found"
+    )
     db_business.business_name = business.business_name
     db_business.business_type = business.business_type
 
@@ -104,8 +108,10 @@ def delete_business(
     db_business = db.query(Business).filter(Business.id == business_id).first()
 
     if not db_business:
-        return {"message": "Business not found"}
-
+        raise HTTPException(
+    status_code=404,
+    detail="Business not found"
+)
     db.delete(db_business)
     db.commit()
 
@@ -122,8 +128,10 @@ def create_product(
     business = db.query(Business).filter(Business.id == business_id).first()
 
     if not business:
-        return {"message": "Business not found"}
-
+        raise HTTPException(
+    status_code=404,
+    detail="Business not found"
+)
     db_product = Product(
         name=product.name,
         price=product.price,
@@ -152,10 +160,102 @@ def get_business_products(
     business = db.query(Business).filter(Business.id == business_id).first()
 
     if not business:
-        return {"message": "Business not found"}
-
+        raise HTTPException(
+    status_code=404,
+    detail="Business not found"
+)
     products = db.query(Product).filter(
         Product.business_id == business_id
     ).all()
 
     return products
+
+
+@app.get("/businesses/{business_id}/products/{product_id}")
+def get_product(
+    business_id: int,
+    product_id: int,
+    db: Session = Depends(get_db)
+):
+    product = db.query(Product).filter(
+        Product.id == product_id,
+        Product.business_id == business_id
+    ).first()
+
+    if not product:
+        raise HTTPException(
+    status_code=404,
+    detail="Product not found"
+)
+    return product 
+
+@app.put("/businesses/{business_id}/products/{product_id}")
+def update_product(
+    business_id: int,
+    product_id: int,
+    product_data: ProductCreate,
+    db: Session = Depends(get_db)
+):
+    product = db.query(Product).filter(
+        Product.id == product_id,
+        Product.business_id == business_id
+    ).first()
+
+    if not product:
+       raise HTTPException(
+         status_code=404,
+        detail="Product not found"
+    )
+
+    product.name = product_data.name
+    product.price = product_data.price
+
+    db.commit()
+    db.refresh(product)
+
+    return product
+
+@app.delete("/businesses/{business_id}/products/{product_id}")
+def delete_product(
+    business_id: int,
+    product_id: int,
+    db: Session = Depends(get_db)
+):
+    product = db.query(Product).filter(
+        Product.id == product_id,
+        Product.business_id == business_id
+    ).first()
+
+    if not product:
+        raise HTTPException(
+    status_code=404,
+    detail="Product not found"
+)
+    db.delete(product)
+    db.commit()
+
+    return {"message": "Product deleted successfully"}
+
+
+@app.get("/businesses/{business_id}/details")
+def get_business_details(
+    business_id: int,
+    db: Session = Depends(get_db)
+):
+    business = db.query(Business).filter(
+        Business.id == business_id
+    ).first()
+
+    if not business:
+        raise HTTPException(
+    status_code=404,
+    detail="Business not found"
+)
+    products = db.query(Product).filter(
+        Product.business_id == business_id
+    ).all()
+
+    return {
+        "business": business,
+        "products": products
+    }  
