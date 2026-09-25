@@ -7,6 +7,7 @@ const productList = document.getElementById("productList");
 const productForm = document.getElementById("productForm");
 const productMessage = document.getElementById("productMessage");
 
+
 businessForm.addEventListener("submit", async function (event) {
     event.preventDefault();
 
@@ -31,9 +32,11 @@ businessForm.addEventListener("submit", async function (event) {
         businessForm.reset();
         loadBusinesses();
     } else {
-        message.textContent = data.detail || "Something went wrong.";
+        message.textContent =
+            data.detail || "Something went wrong.";
     }
 });
+
 
 async function loadBusinesses() {
     const response = await fetch(`${API_URL}/businesses`);
@@ -50,14 +53,20 @@ async function loadBusinesses() {
             <h3>${business.business_name}</h3>
             <p>Type: ${business.business_type}</p>
             <p>ID: ${business.id}</p>
+
             <button onclick="loadProducts(${business.id})">
                 View Products
+            </button>
+
+            <button onclick="deleteBusiness(${business.id})">
+                Delete Business
             </button>
         `;
 
         businessList.appendChild(div);
     });
 }
+
 
 async function loadProducts(businessId) {
     const response = await fetch(
@@ -84,12 +93,18 @@ async function loadProducts(businessId) {
     });
 }
 
+
 productForm.addEventListener("submit", async function (event) {
     event.preventDefault();
 
-    const businessId = document.getElementById("productBusinessId").value;
-    const productName = document.getElementById("productName").value;
-    const productPrice = document.getElementById("productPrice").value;
+    const businessId =
+        document.getElementById("productBusinessId").value;
+
+    const productName =
+        document.getElementById("productName").value;
+
+    const productPrice =
+        document.getElementById("productPrice").value;
 
     const response = await fetch(
         `${API_URL}/businesses/${businessId}/products`,
@@ -108,11 +123,38 @@ productForm.addEventListener("submit", async function (event) {
     const data = await response.json();
 
     if (response.ok) {
-        productMessage.textContent = "Product created successfully!";
+        productMessage.textContent =
+            "Product created successfully!";
+
         productForm.reset();
+
         loadProducts(businessId);
     } else {
         productMessage.textContent =
             data.detail || "Something went wrong.";
     }
 });
+
+
+async function deleteBusiness(businessId) {
+    const response = await fetch(
+        `${API_URL}/businesses/${businessId}`,
+        {
+            method: "DELETE"
+        }
+    );
+
+    const data = await response.json();
+
+    if (response.ok) {
+        message.textContent =
+            "Business deleted successfully!";
+
+        productList.innerHTML = "";
+
+        loadBusinesses();
+    } else {
+        message.textContent =
+            data.detail || "Something went wrong.";
+    }
+}
