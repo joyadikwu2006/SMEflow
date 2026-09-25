@@ -88,6 +88,10 @@ async function loadProducts(businessId) {
                 <h3>${product.name}</h3>
                 <p>Price: ₦${product.price}</p>
                 <p>Product ID: ${product.id}</p>
+
+                <button onclick="deleteProduct(${businessId}, ${product.id})">
+                    Delete Product
+                </button>
             </div>
         `;
     });
@@ -155,6 +159,28 @@ async function deleteBusiness(businessId) {
         loadBusinesses();
     } else {
         message.textContent =
+            data.detail || "Something went wrong.";
+    }
+}
+
+
+async function deleteProduct(businessId, productId) {
+    const response = await fetch(
+        `${API_URL}/businesses/${businessId}/products/${productId}`,
+        {
+            method: "DELETE"
+        }
+    );
+
+    const data = await response.json();
+
+    if (response.ok) {
+        productMessage.textContent =
+            "Product deleted successfully!";
+
+        loadProducts(businessId);
+    } else {
+        productMessage.textContent =
             data.detail || "Something went wrong.";
     }
 }
