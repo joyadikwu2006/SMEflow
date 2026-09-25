@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMEflow</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <header>
+        <h1>SMEflow</h1>
+        <p>Small Business Management Dashboard</p>
+    </header>
+
+    <main>
+
+        <section class="card">
+            <h2>Create Business</h2>
+
+            <form id="businessForm">
+                <input
+                    type="text"
+                    id="businessName"
+                    placeholder="Business name"
+                    required
+                >
+
+                <input
+                    type="text"
+                    id="businessType"
+                    placeholder="Business type"
+                    required
+                >
+
+                <button type="submit">Create Business</button>
+            </form>
+
+            <p id="message"></p>
+        </section>
+
+        <section class="card">
+            <h2>Businesses</h2>
+
+            <button onclick="loadBusinesses()">
+                Load Businesses
+            </button>
+
+            <div id="businessList"></div>
+            <div id="productList"></div>
+
+            <section class="card">
+                <h2>Add Product</h2>
+
+                <form id="productForm">
+                    <input
+                        type="number"
+                        id="productBusinessId"
+                        placeholder="Business ID"
+                        required
+                    >
+
+                    <input
+                        type="text"
+                        id="productName"
+                        placeholder="Product name"
+                        required
+                    >
+
+                    <input
+                        type="number"
+                        id="productPrice"
+                        placeholder="Product price"
+                        required
+                    >
+            
+
+                    <button type="submit">Add Product</button>
+                </form>
+
+                <p id="productMessage"></p>
+            </section>
+        </section>
+
+    </main>
+
+    <script src="script.js"></script>
+
+</body>
+</html>
