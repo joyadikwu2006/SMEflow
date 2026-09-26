@@ -89,6 +89,10 @@ async function loadProducts(businessId) {
                 <p>Price: ₦${product.price}</p>
                 <p>Product ID: ${product.id}</p>
 
+                <button onclick="editProduct(${businessId}, ${product.id}, '${product.name}', ${product.price})">
+                    Edit Product
+                </button>
+
                 <button onclick="deleteProduct(${businessId}, ${product.id})">
                     Delete Product
                 </button>
@@ -177,6 +181,58 @@ async function deleteProduct(businessId, productId) {
     if (response.ok) {
         productMessage.textContent =
             "Product deleted successfully!";
+
+        loadProducts(businessId);
+    } else {
+        productMessage.textContent =
+            data.detail || "Something went wrong.";
+    }
+}
+
+
+async function editProduct(
+    businessId,
+    productId,
+    currentName,
+    currentPrice
+) {
+    const newName = prompt(
+        "Enter the new product name:",
+        currentName
+    );
+
+    if (newName === null) {
+        return;
+    }
+
+    const newPrice = prompt(
+        "Enter the new product price:",
+        currentPrice
+    );
+
+    if (newPrice === null) {
+        return;
+    }
+
+    const response = await fetch(
+        `${API_URL}/businesses/${businessId}/products/${productId}`,
+        {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                name: newName,
+                price: Number(newPrice)
+            })
+        }
+    );
+
+    const data = await response.json();
+
+    if (response.ok) {
+        productMessage.textContent =
+            "Product updated successfully!";
 
         loadProducts(businessId);
     } else {
