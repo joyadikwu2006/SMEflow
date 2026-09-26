@@ -57,6 +57,14 @@ async function loadBusinesses() {
             <button onclick="loadProducts(${business.id})">
                 View Products
             </button>
+            <button onclick="editBusiness(
+                ${business.id},
+               '${business.business_name}',
+               '${business.business_type}'
+            )">
+                Edit Business
+            </button>
+
 
             <button onclick="deleteBusiness(${business.id})">
                 Delete Business
@@ -237,6 +245,56 @@ async function editProduct(
         loadProducts(businessId);
     } else {
         productMessage.textContent =
+            data.detail || "Something went wrong.";
+    }
+}
+
+async function editBusiness(
+    businessId,
+    currentName,
+    currentType
+) {
+    const newName = prompt(
+        "Enter the new business name:",
+        currentName
+    );
+
+    if (newName === null) {
+        return;
+    }
+
+    const newType = prompt(
+        "Enter the new business type:",
+        currentType
+    );
+
+    if (newType === null) {
+        return;
+    }
+
+    const response = await fetch(
+        `${API_URL}/businesses/${businessId}`,
+        {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                business_name: newName,
+                business_type: newType
+            })
+        }
+    );
+
+    const data = await response.json();
+
+    if (response.ok) {
+        message.textContent =
+            "Business updated successfully!";
+
+        loadBusinesses();
+    } else {
+        message.textContent =
             data.detail || "Something went wrong.";
     }
 }
