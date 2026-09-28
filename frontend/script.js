@@ -50,29 +50,54 @@ async function loadBusinesses() {
         div.className = "business";
 
         div.innerHTML = `
-            <h3>${business.business_name}</h3>
-            <p>Type: ${business.business_type}</p>
-            <p>ID: ${business.id}</p>
+            <div class="business-info">
 
-            <button onclick="loadProducts(${business.id})">
-                View Products
-            </button>
-            <button onclick="editBusiness(
+                <div>
+                    <h3>${business.business_name}</h3>
+
+                    <span class="business-type">
+                       ${business.business_type}
+                    </span>
+                </div>
+
+                <span class="business-id">
+                    ID: ${business.id}
+                </span>
+
+            </div>
+
+            <div class="business-actions">
+
+               <button
+                    class="view-button"
+                    onclick="loadProducts(${business.id})"
+                >
+                   View Products
+        </button>
+
+        <button
+            class="edit-button"
+            onclick="editBusiness(
                 ${business.id},
-               '${business.business_name}',
-               '${business.business_type}'
-            )">
-                Edit Business
-            </button>
+                '${business.business_name}',
+                '${business.business_type}'
+            )"
+        >
+            Edit
+        </button>
 
+        <button
+            class="delete-button"
+            onclick="deleteBusiness(${business.id})"
+        >
+            Delete
+        </button>
 
-            <button onclick="deleteBusiness(${business.id})">
-                Delete Business
-            </button>
-        `;
-
+    </div>
+`;
         businessList.appendChild(div);
     });
+    updateDashboardStats();
 }
 
 
@@ -298,3 +323,44 @@ async function editBusiness(
             data.detail || "Something went wrong.";
     }
 }
+
+async function updateDashboardStats() {
+    try {
+        const businessResponse = await fetch(
+            `${API_URL}/businesses`
+        );
+
+        const businesses = await businessResponse.json();
+
+        let totalProducts = 0;
+        let totalValue = 0;
+
+        for (const business of businesses) {
+            const productResponse = await fetch(
+                `${API_URL}/businesses/${business.id}/products`
+            );
+
+            const products = await productResponse.json();
+
+            totalProducts += products.length;
+
+            products.forEach(function (product) {
+                totalValue += Number(product.price);
+            });
+        }
+
+        document.getElementById("businessCount").textContent =
+            businesses.length;
+
+        document.getElementById("productCount").textContent =
+            totalProducts;
+
+        document.getElementById("productValue").textContent =
+            `₦${totalValue.toLocaleString()}`;
+
+    } catch (error) {
+        console.error("Could not load dashboard statistics:", error);
+    }
+}
+
+updateDashboardStats();
