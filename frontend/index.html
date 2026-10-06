@@ -3,87 +3,312 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SMEflow</title>
+
+    <title>SMEflow Dashboard</title>
+
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-    <header>
-        <h1>SMEflow</h1>
-        <p>Small Business Management Dashboard</p>
-    </header>
+    <div class="dashboard">
 
-    <main>
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
 
-        <section class="card">
-            <h2>Create Business</h2>
+            <div class="logo">
+                <h1>SMEflow</h1>
+                <p>Business Management</p>
+            </div>
 
-            <form id="businessForm">
-                <input
-                    type="text"
-                    id="businessName"
-                    placeholder="Business name"
-                    required
-                >
+            <nav>
+                <a href="#" class="nav-link active">
+                    Dashboard
+                </a>
+            </nav>
 
-                <input
-                    type="text"
-                    id="businessType"
-                    placeholder="Business type"
-                    required
-                >
+            <div class="system-status">
+                <span class="status-dot"></span>
+                <span>System Online</span>
+            </div>
 
-                <button type="submit">Create Business</button>
-            </form>
+        </aside>
 
-            <p id="message"></p>
-        </section>
 
-        <section class="card">
-            <h2>Businesses</h2>
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
 
-            <button onclick="loadBusinesses()">
-                Load Businesses
-            </button>
+            <!-- HEADER -->
+            <header class="top-header">
 
-            <div id="businessList"></div>
-            <div id="productList"></div>
+                <div>
+                    <p class="page-label">BUSINESS MANAGEMENT</p>
 
+                    <h2>Dashboard</h2>
+
+                    <p class="subtitle">
+                        Manage your businesses and products from one simple dashboard.
+                    </p>
+                </div>
+
+            </header>
+
+
+            <!-- DASHBOARD STATISTICS -->
+            <section class="stats-grid">
+
+                <div class="stat-card">
+
+                    <div class="stat-icon business-icon">
+                        B
+                    </div>
+
+                    <div>
+                        <p>Businesses</p>
+
+                        <h3 id="businessCount">0</h3>
+                    </div>
+
+                </div>
+
+
+                <div class="stat-card">
+
+                    <div class="stat-icon product-icon">
+                        P
+                    </div>
+
+                    <div>
+                        <p>Products</p>
+
+                        <h3 id="productCount">0</h3>
+                    </div>
+
+                </div>
+
+
+                <div class="stat-card">
+
+                    <div class="stat-icon value-icon">
+                        ₦
+                    </div>
+
+                    <div>
+                        <p>Product Value</p>
+
+                        <h3 id="productValue">₦0</h3>
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- CREATE BUSINESS -->
             <section class="card">
-                <h2>Add Product</h2>
 
-                <form id="productForm">
-                    <input
-                        type="number"
-                        id="productBusinessId"
-                        placeholder="Business ID"
-                        required
+                <div class="section-header">
+
+                    <div>
+                        <h2>Create Business</h2>
+
+                        <p>
+                            Add a new business to your SMEflow account.
+                        </p>
+                    </div>
+
+                </div>
+
+
+                <form id="businessForm" class="form">
+
+                    <div class="form-group">
+
+                        <label for="businessName">
+                            Business Name
+                        </label>
+
+                        <input
+                            type="text"
+                            id="businessName"
+                            placeholder="Enter business name"
+                            required
+                        >
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label for="businessType">
+                            Business Type
+                        </label>
+
+                        <input
+                            type="text"
+                            id="businessType"
+                            placeholder="e.g. Technology"
+                            required
+                        >
+
+                    </div>
+
+
+                    <button
+                        type="submit"
+                        class="primary-button"
                     >
+                        Create Business
+                    </button>
 
-                    <input
-                        type="text"
-                        id="productName"
-                        placeholder="Product name"
-                        required
-                    >
-
-                    <input
-                        type="number"
-                        id="productPrice"
-                        placeholder="Product price"
-                        required
-                    >
-            
-
-                    <button type="submit">Add Product</button>
                 </form>
 
-                <p id="productMessage"></p>
-            </section>
-        </section>
 
-    </main>
+                <p id="message" class="message"></p>
+
+            </section>
+
+
+            <!-- BUSINESSES -->
+            <section class="card">
+
+                <div class="section-header">
+
+                    <div>
+                        <h2>Businesses</h2>
+
+                        <p>
+                            View and manage your businesses.
+                        </p>
+                    </div>
+
+
+                    <button
+                        onclick="loadBusinesses()"
+                        class="secondary-button"
+                    >
+                        Load Businesses
+                    </button>
+
+                </div>
+
+
+                <div id="businessList"></div>
+
+            </section>
+
+
+            <!-- PRODUCTS -->
+            <section class="card">
+
+                <div class="section-header">
+
+                    <div>
+                        <h2>Products</h2>
+
+                        <p>
+                            Products belonging to the selected business.
+                        </p>
+                    </div>
+
+                </div>
+
+
+                <div id="productList">
+
+                    <p class="empty-message">
+                        Select "View Products" from a business to see its products.
+                    </p>
+
+                </div>
+
+            </section>
+
+
+            <!-- ADD PRODUCT -->
+            <section class="card">
+
+                <div class="section-header">
+
+                    <div>
+                        <h2>Add Product</h2>
+
+                        <p>
+                            Add a product to an existing business.
+                        </p>
+                    </div>
+
+                </div>
+
+
+                <form id="productForm" class="form">
+
+                    <div class="form-group">
+
+                        <label for="productBusinessId">
+                            Business ID
+                        </label>
+
+                        <input
+                            type="number"
+                            id="productBusinessId"
+                            placeholder="Business ID"
+                            required
+                        >
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label for="productName">
+                            Product Name
+                        </label>
+
+                        <input
+                            type="text"
+                            id="productName"
+                            placeholder="Product name"
+                            required
+                        >
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label for="productPrice">
+                            Product Price
+                        </label>
+
+                        <input
+                            type="number"
+                            id="productPrice"
+                            placeholder="Product price"
+                            required
+                        >
+
+                    </div>
+
+
+                    <button
+                        type="submit"
+                        class="primary-button"
+                    >
+                        Add Product
+                    </button>
+
+                </form>
+
+
+                <p id="productMessage" class="message"></p>
+
+            </section>
+
+        </main>
+
+    </div>
+
 
     <script src="script.js"></script>
 
