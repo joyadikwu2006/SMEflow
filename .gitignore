@@ -1,5 +1,5 @@
-venv/
+.venv/
 __pycache__/
-*.pyc
-smeflow.db
+.pytest_cache/
 .env
+.DS_Store

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMEflow Owner Portal</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="auth-shell">
+        <div class="auth-panel" id="ownerAuthPanel">
+            <h2>Owner Login</h2>
+            <p>Manage your business, products, and orders.</p>
+            <form id="ownerLoginForm" class="auth-form">
+                <div class="form-group">
+                    <label for="ownerUsername">Username</label>
+                    <input id="ownerUsername" type="text" value="owner" required>
+                </div>
+                <div class="form-group">
+                    <label for="ownerPassword">Password</label>
+                    <input id="ownerPassword" type="password" value="owner123" required>
+                </div>
+                <button type="submit" class="primary-button">Login</button>
+            </form>
+            <p id="ownerLoginMessage" class="message"></p>
+        </div>
+    </div>
+
+    <div id="ownerDashboard" class="dashboard hidden">
+        <aside class="sidebar">
+            <div class="logo">
+                <h1>SMEflow</h1>
+                <p>Business Management</p>
+            </div>
+            <nav>
+                <a href="#" class="nav-link active">Dashboard</a>
+            </nav>
+            <div class="system-status">
+                <span class="status-dot"></span>
+                <span>System Online</span>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="top-header">
+                <div>
+                    <p class="page-label">BUSINESS MANAGEMENT</p>
+                    <h2>Owner Dashboard</h2>
+                    <p class="subtitle">Manage your businesses and products from one simple dashboard.</p>
+                </div>
+            </header>
+
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon business-icon">B</div>
+                    <div>
+                        <p>Businesses</p>
+                        <h3 id="businessCount">0</h3>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon product-icon">P</div>
+                    <div>
+                        <p>Products</p>
+                        <h3 id="productCount">0</h3>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon value-icon">₦</div>
+                    <div>
+                        <p>Product Value</p>
+                        <h3 id="productValue">₦0</h3>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="section-header">
+                    <div>
+                        <h2>Create Business</h2>
+                        <p>Add a new business to your SMEflow account.</p>
+                    </div>
+                </div>
+
+                <form id="businessForm" class="form">
+                    <div class="form-group">
+                        <label for="businessName">Business Name</label>
+                        <input type="text" id="businessName" placeholder="Enter business name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="businessType">Business Type</label>
+                        <input type="text" id="businessType" placeholder="e.g. Technology" required>
+                    </div>
+                    <button type="submit" class="primary-button">Create Business</button>
+                </form>
+                <p id="message" class="message"></p>
+            </section>
+
+            <section class="card">
+                <div class="section-header">
+                    <div>
+                        <h2>Businesses</h2>
+                        <p>View and manage your businesses.</p>
+                    </div>
+                    <button onclick="loadBusinesses()" class="secondary-button">Load Businesses</button>
+                </div>
+                <div id="businessList"></div>
+            </section>
+
+            <section class="card">
+                <div class="section-header">
+                    <div>
+                        <h2>Products</h2>
+                        <p>Products belonging to the selected business.</p>
+                    </div>
+                </div>
+                <div id="productList">
+                    <p class="empty-message">Select "View Products" from a business to see its products.</p>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="section-header">
+                    <div>
+                        <h2>Add Product</h2>
+                        <p>Add a product to an existing business.</p>
+                    </div>
+                </div>
+                <form id="productForm" class="form">
+                    <div class="form-group">
+                        <label for="productBusinessId">Business</label>
+                        <select id="productBusinessId" required>
+                            <option value="">Select a business</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="productName">Product Name</label>
+                        <input type="text" id="productName" placeholder="Product name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="productPrice">Product Price</label>
+                        <input type="number" id="productPrice" placeholder="Product price" required>
+                    </div>
+                    <button type="submit" class="primary-button">Add Product</button>
+                </form>
+                <p id="productMessage" class="message"></p>
+            </section>
+
+            <section class="card">
+                <div class="section-header">
+                    <div>
+                        <h2>Recent Orders</h2>
+                        <p>Owner view of customer purchases and payment confirmations.</p>
+                    </div>
+                </div>
+                <div id="ordersList"></div>
+            </section>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

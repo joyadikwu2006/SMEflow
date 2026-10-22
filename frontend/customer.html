@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMEflow Customer Portal</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="auth-shell" id="customerAuthShell">
+        <div class="auth-panel" id="customerAuthPanel">
+            <h2>Customer Login</h2>
+            <p>Browse products, add to cart, and pay securely.</p>
+            <form id="customerLoginForm" class="auth-form">
+                <div class="form-group">
+                    <label for="customerUsername">Username</label>
+                    <input id="customerUsername" type="text" value="customer" required>
+                </div>
+                <div class="form-group">
+                    <label for="customerPassword">Password</label>
+                    <input id="customerPassword" type="password" value="customer123" required>
+                </div>
+                <button type="submit" class="primary-button">Login</button>
+            </form>
+            <p id="customerLoginMessage" class="message"></p>
+        </div>
+    </div>
+
+    <div id="customerDashboard" class="customer-shell hidden">
+        <header class="customer-header">
+            <div>
+                <p class="page-label">CUSTOMER STORE</p>
+                <h2>Shop Products</h2>
+            </div>
+            <button id="logoutCustomer" type="button" class="secondary-button">Log out</button>
+        </header>
+
+        <div class="customer-layout">
+            <section class="card storefront-panel">
+                <div class="section-header">
+                    <div>
+                        <h2>Storefront</h2>
+                        <p>Find products from trusted businesses.</p>
+                    </div>
+                </div>
+                <div id="storefrontList" class="storefront-grid"></div>
+            </section>
+
+            <aside class="card cart-panel">
+                <div class="section-header">
+                    <div>
+                        <h2>Shopping Cart</h2>
+                        <p>Review products before checkout.</p>
+                    </div>
+                </div>
+                <div id="cartItems" class="cart-items"></div>
+                <div class="cart-total">
+                    <span>Total</span>
+                    <strong id="cartTotal">₦0</strong>
+                </div>
+                <form id="checkoutForm" class="checkout-form">
+                    <div class="form-group">
+                        <label for="customerName">Customer Name</label>
+                        <input type="text" id="customerName" placeholder="Jane Doe" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="customerEmail">Email</label>
+                        <input type="email" id="customerEmail" placeholder="jane@example.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="paymentMethod">Payment Method</label>
+                        <select id="paymentMethod" required>
+                            <option value="">Select payment method</option>
+                            <option value="stripe" selected>Stripe Checkout</option>
+                            <option value="card">Card (legacy)</option>
+                            <option value="transfer">Transfer</option>
+                            <option value="wallet">Wallet</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="primary-button">Pay Now</button>
+                </form>
+                <p id="checkoutMessage" class="message"></p>
+            </aside>
+        </div>
+    </div>
+
+    <script src="customer.js"></script>
+</body>
+</html>
