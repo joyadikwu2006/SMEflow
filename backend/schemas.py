@@ -17,6 +17,9 @@ class BusinessCreate(BaseModel):
 class ProductCreate(BaseModel):
     name: str = Field(..., min_length=1)
     price: float = Field(..., gt=0)
+    description: str = Field(default="", max_length=1000)
+    image_url: str = Field(default="", max_length=2048)
+    stock_quantity: int = Field(default=0, ge=0)
 
     @field_validator("name")
     @classmethod
@@ -26,6 +29,10 @@ class ProductCreate(BaseModel):
             raise ValueError("Name cannot be empty")
         return cleaned
 
+    @field_validator("description", "image_url")
+    @classmethod
+    def clean_optional_text(cls, value: str) -> str:
+        return value.strip()
 
 class OrderItemCreate(BaseModel):
     product_id: int
