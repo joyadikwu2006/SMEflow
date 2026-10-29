@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from backend.database import Base, SessionLocal, engine
-from backend.models import Business, Order, OrderItem, Product
+from backend.models import Business, Order, OrderItem, Product, ProcessedStripeSession
 from backend.schemas import (
     BusinessCreate,
     LoginRequest,
@@ -234,58 +234,121 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         return {"status": "ignored", "event": event.get("type")}
 
     session = event.get("data", {}).get("object", {})
+    session_id = session.get("id")
+
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Missing Stripe checkout session ID")
+
+    if db.query(ProcessedStripeSession).filter_by(session_id=session_id).first():
+        return {"status": "already_processed", "orders": []}
+
+    if session.get("payment_status") != "paid":
+        return {"status": "payment_not_completed", "orders": []}
+
     metadata = session.get("metadata") or {}
     customer_name = metadata.get("customer_name") or "Customer"
-    customer_email = session.get("customer_email") or metadata.get("customer_email") or "unknown@example.com"
-    items_raw = metadata.get("items") or "[]"
+    customer_email = (
+        session.get("customer_email")
+        or metadata.get("customer_email")
+        or "unknown@example.com"
+    )
 
     try:
-        items = json.loads(items_raw)
-    except json.JSONDecodeError:
-        items = []
+        items = json.loads(metadata.get("items") or "[]")
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid checkout item metadata")
 
-    if not items:
+    if not isinstance(items, list) or not items:
         raise HTTPException(status_code=400, detail="Checkout session had no items to process")
 
     grouped_items = {}
+    seen_product_ids = set()
+
     for item in items:
-        product = db.query(Product).filter(Product.id == item["product_id"]).first()
+        try:
+            product_id = int(item["product_id"])
+            quantity = int(item["quantity"])
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid checkout item")
+
+        if product_id in seen_product_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="A product cannot appear more than once in a checkout",
+            )
+        seen_product_ids.add(product_id)
+
+        if quantity <= 0:
+            raise HTTPException(status_code=400, detail="Quantity must be greater than zero")
+
+        product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
-            raise HTTPException(status_code=404, detail=f"Product {item['product_id']} not found")
-        grouped_items.setdefault(product.business_id, []).append({
-            "product_id": product.id,
-            "quantity": int(item.get("quantity", 1)),
-            "unit_price": product.price,
-        })
+            raise HTTPException(status_code=404, detail=f"Product {product_id} not found")
+
+        if quantity > product.stock_quantity:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient stock for product {product_id}",
+            )
+
+        grouped_items.setdefault(product.business_id, []).append(
+            {
+                "product": product,
+                "quantity": quantity,
+                "unit_price": product.price,
+            }
+        )
 
     created_orders = []
-    for business_id, business_items in grouped_items.items():
-        total_amount = sum(item["unit_price"] * item["quantity"] for item in business_items)
-        order = Order(
-            customer_name=customer_name,
-            customer_email=customer_email,
-            payment_method="stripe",
-            payment_status="paid",
-            status="paid",
-            total_amount=total_amount,
-            business_id=business_id,
-        )
-        db.add(order)
-        db.commit()
-        db.refresh(order)
 
-        for item in business_items:
-            db_item = OrderItem(
-                order_id=order.id,
-                product_id=item["product_id"],
-                quantity=item["quantity"],
-                unit_price=item["unit_price"],
-                line_total=item["unit_price"] * item["quantity"],
+    try:
+        db.add(ProcessedStripeSession(session_id=session_id))
+        db.flush()
+
+        for business_id, business_items in grouped_items.items():
+            total_amount = sum(
+                item["unit_price"] * item["quantity"] for item in business_items
             )
-            db.add(db_item)
+
+            order = Order(
+                customer_name=customer_name,
+                customer_email=customer_email,
+                payment_method="stripe",
+                payment_status="paid",
+                status="paid",
+                total_amount=total_amount,
+                business_id=business_id,
+            )
+            db.add(order)
+            db.flush()
+
+            for item in business_items:
+                product = item["product"]
+                product.stock_quantity -= item["quantity"]
+
+                db.add(
+                    OrderItem(
+                        order_id=order.id,
+                        product_id=product.id,
+                        quantity=item["quantity"],
+                        unit_price=item["unit_price"],
+                        line_total=item["unit_price"] * item["quantity"],
+                    )
+                )
+
+            created_orders.append(
+                {
+                    "id": order.id,
+                    "status": order.status,
+                    "total_amount": order.total_amount,
+                }
+            )
 
         db.commit()
-        created_orders.append({"id": order.id, "status": order.status, "total_amount": order.total_amount})
+
+    except Exception:
+        db.rollback()
+        raise
 
     return {"status": "received", "orders": created_orders}
 

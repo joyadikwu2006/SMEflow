@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Float, ForeignKey, Integer, String
+from sqlalchemy import Column, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from backend.database import Base
@@ -59,3 +59,13 @@ class OrderItem(Base):
 
     order = relationship("Order", back_populates="items")
     product = relationship("Product", back_populates="order_items")
+
+
+class ProcessedStripeSession(Base):
+    __tablename__ = "processed_stripe_sessions"
+    __table_args__ = (
+        UniqueConstraint("session_id", name="uq_processed_stripe_session_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String(255), nullable=False)

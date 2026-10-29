@@ -193,6 +193,7 @@ def test_checkout_session_uses_stripe_when_configured(monkeypatch):
 def test_stripe_webhook_confirms_completed_checkout(monkeypatch):
     os.environ["STRIPE_SECRET_KEY"] = "sk_test_123"
     os.environ["STRIPE_WEBHOOK_SECRET"] = "whsec_test_123"
+    product_id_holder = {"id": None}
 
     class FakeWebhook:
         @staticmethod
@@ -203,10 +204,12 @@ def test_stripe_webhook_confirms_completed_checkout(monkeypatch):
                 "type": "checkout.session.completed",
                 "data": {
                     "object": {
+                        "id": "cs_test_webhook_001",
+                        "payment_status": "paid",
                         "customer_email": "jane@example.com",
                         "metadata": {
                             "customer_name": "Jane Doe",
-                            "items": '[{"product_id": 1, "quantity": 2}]',
+                            "items": f'[{{"product_id": {product_id_holder["id"]}, "quantity": 2}}]',                        
                         },
                     }
                 },
@@ -228,12 +231,12 @@ def test_stripe_webhook_confirms_completed_checkout(monkeypatch):
     business_id = business_response.json()["business"]["id"]
 
     product_response = client.post(
-        f"/businesses/{business_id}/products",
-        json={"name": "Smartphone", "price": 250.0},
-        headers={"Authorization": f"Bearer {token}"},
-    )
+    f"/businesses/{business_id}/products",
+    json={"name": "Smartphone", "price": 250.0, "stock_quantity": 2},
+    headers={"Authorization": f"Bearer {token}"},
+)
     product_id = product_response.json()["product"]["id"]
-
+    product_id_holder["id"] = product_id
     response = client.post(
         "/payments/webhook",
         data=b'{"event": "test"}',
@@ -242,12 +245,35 @@ def test_stripe_webhook_confirms_completed_checkout(monkeypatch):
 
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "received"
+    second_response = client.post(
+        "/payments/webhook",
+        data=b'{"event": "test"}',
+        headers={"stripe-signature": "valid-signature"},
+    )
+
+    assert second_response.status_code == 200, second_response.text
+    assert second_response.json()["status"] == "already_processed"
 
     order_response = client.get("/orders")
     assert order_response.status_code == 200
-    assert any(order["customer_email"] == "jane@example.com" for order in order_response.json())
 
+    webhook_orders = [
+        order for order in order_response.json()
+        if order["customer_email"] == "jane@example.com"
+        and order["payment_method"] == "stripe"
+    ]
+    assert len(webhook_orders) == 1
+    assert webhook_orders[0]["items"][0]["quantity"] == 2
 
+    products_response = client.get("/products")
+    assert products_response.status_code == 200
+
+    webhook_product = next(
+        product for product in products_response.json()
+        if product["id"] == product_id
+    )
+    assert webhook_product["stock_quantity"] == 0
+    
 def test_customer_can_buy_products():
     owner_login = client.post(
         "/auth/owner/login",
