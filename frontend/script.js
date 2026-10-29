@@ -171,13 +171,16 @@ async function loadStorefront() {
             card.className = "storefront-item";
 
             card.innerHTML = `
+                ${product.image_url ? `<img src="${escapeHtml(product.image_url)}" alt="${escapeHtml(product.name)}" style="width: 100%; max-height: 220px; object-fit: cover;" onerror="this.style.display='none'">` : ""}
                 <div class="storefront-header">
                     <h3>${escapeHtml(product.name)}</h3>
                     <span class="product-price">₦${Number(product.price).toLocaleString()}</span>
                 </div>
+                <p>${escapeHtml(product.description || "No description available.")}</p>
                 <p>${escapeHtml(product.business_name)}</p>
                 <p>${escapeHtml(product.business_type)}</p>
-                <button type="button" class="secondary-button" onclick="document.getElementById('checkoutProduct').value = ${product.id};">Select Product</button>
+                <p>Stock available: ${Number(product.stock_quantity || 0)}</p>
+                <button type="button" class="secondary-button" ${Number(product.stock_quantity || 0) <= 0 ? "disabled" : ""} onclick="document.getElementById('checkoutProduct').value = ${product.id};">Select Product</button>
             `;
 
             storefrontList.appendChild(card);
@@ -288,7 +291,9 @@ async function loadProducts(businessId) {
                     <h3>${escapeHtml(product.name)}</h3>
                     <p>Price: ₦${Number(product.price).toLocaleString()}</p>
                     <p>Product ID: ${product.id}</p>
-                    <button onclick="editProduct(${businessId}, ${product.id}, '${escapeHtml(product.name)}', ${Number(product.price)})">Edit Product</button>
+                    <p>Description: ${escapeHtml(product.description || "No description")}</p>
+                    <p>Stock: ${Number(product.stock_quantity || 0)}</p>
+                    <button onclick="editProduct(${businessId}, ${product.id}, ${JSON.stringify(product.name)}, ${Number(product.price)}, ${JSON.stringify(product.description || "")}, ${JSON.stringify(product.image_url || "")}, ${Number(product.stock_quantity || 0)})">Edit Product</button>
                     <button onclick="deleteProduct(${businessId}, ${product.id})">Delete Product</button>
                 </div>
             `;
@@ -311,7 +316,9 @@ productForm.addEventListener("submit", async function (event) {
 
     const productName = document.getElementById("productName").value.trim();
     const productPrice = document.getElementById("productPrice").value;
-
+    const productDescription = document.getElementById("productDescription").value.trim();
+    const productImageUrl = document.getElementById("productImageUrl").value.trim();
+    const productStock = Number(document.getElementById("productStock").value);
     if (!productName || !productPrice) {
         setMessage(productMessage, "Please enter a product name and price.", true);
         return;
@@ -325,7 +332,10 @@ productForm.addEventListener("submit", async function (event) {
             }),
             body: JSON.stringify({
                 name: productName,
-                price: Number(productPrice)
+                price: Number(productPrice),
+                description: productDescription,
+                image_url: productImageUrl,
+                stock_quantity: productStock
             })
         });
 
@@ -437,16 +447,33 @@ async function deleteProduct(businessId, productId) {
 }
 
 
-async function editProduct(businessId, productId, currentName, currentPrice) {
-    const newName = prompt("Enter the new product name:", currentName);
 
-    if (newName === null) {
+async function editProduct(businessId, productId, currentName, currentPrice, currentDescription = "", currentImageUrl = "", currentStock = 0) {
+    const newName = prompt("Enter the new product name:", currentName);
+    if (newName === null) return;
+
+    const newPrice = prompt("Enter the new product price:", currentPrice);
+    if (newPrice === null) return;
+
+    const newDescription = prompt("Enter the product description:", currentDescription);
+    if (newDescription === null) return;
+
+    const newImageUrl = prompt("Enter the product image URL:", currentImageUrl);
+    if (newImageUrl === null) return;
+
+    const newStock = prompt("Enter the stock quantity:", currentStock);
+    if (newStock === null) return;
+
+    const price = Number(newPrice);
+    const stock = Number(newStock);
+
+    if (!newName.trim() || !Number.isFinite(price) || price <= 0) {
+        setMessage(productMessage, "Enter a valid product name and positive price.", true);
         return;
     }
 
-    const newPrice = prompt("Enter the new product price:", currentPrice);
-
-    if (newPrice === null) {
+    if (!Number.isInteger(stock) || stock < 0) {
+        setMessage(productMessage, "Stock must be a whole number of zero or more.", true);
         return;
     }
 
@@ -458,7 +485,10 @@ async function editProduct(businessId, productId, currentName, currentPrice) {
             }),
             body: JSON.stringify({
                 name: newName.trim(),
-                price: Number(newPrice)
+                price: price,
+                description: newDescription.trim(),
+                image_url: newImageUrl.trim(),
+                stock_quantity: stock
             })
         });
 
@@ -467,6 +497,7 @@ async function editProduct(businessId, productId, currentName, currentPrice) {
         if (response.ok) {
             setMessage(productMessage, "Product updated successfully!");
             await loadProducts(businessId);
+            await loadStorefront();
         } else {
             setMessage(productMessage, data.detail || "Something went wrong.", true);
         }
@@ -474,6 +505,7 @@ async function editProduct(businessId, productId, currentName, currentPrice) {
         setMessage(productMessage, "Unable to update this product.", true);
     }
 }
+
 
 async function editBusiness(businessId, currentName, currentType) {
     const newName = prompt("Enter the new business name:", currentName);

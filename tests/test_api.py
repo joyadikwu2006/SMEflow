@@ -264,7 +264,7 @@ def test_customer_can_buy_products():
 
     product_response = client.post(
         f"/businesses/{business_id}/products",
-        json={"name": "Smartphone", "price": 250.0},
+        json={"name": "Smartphone", "price": 250.0, "stock_quantity": 2},
         headers={"Authorization": f"Bearer {token}"},
     )
     product_id = product_response.json()["product"]["id"]
@@ -289,6 +289,23 @@ def test_customer_can_buy_products():
     assert payload["payment_status"] == "paid"
     assert payload["items"][0]["quantity"] == 2
 
+    products_response = client.get("/products")
+    purchased_product = next(
+        product for product in products_response.json()
+        if product["id"] == product_id
+    )
+    assert purchased_product["stock_quantity"] == 0
+
+    excess_order_response = client.post(
+        "/orders",
+        json={
+            "customer_name": "Jane Doe",
+            "customer_email": "jane@example.com",
+            "payment_method": "card",
+            "items": [{"product_id": product_id, "quantity": 1}],
+        },
+    )
+    assert excess_order_response.status_code == 400
     owner_orders_response = client.get(f"/businesses/{business_id}/orders")
     assert owner_orders_response.status_code == 200
     assert owner_orders_response.json()[0]["customer_name"] == "Jane Doe"

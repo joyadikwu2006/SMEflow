@@ -328,6 +328,9 @@ def get_products(db: Session = Depends(get_db)):
             "id": product.id,
             "name": product.name,
             "price": product.price,
+            "description": product.description,
+            "image_url": product.image_url,
+            "stock_quantity": product.stock_quantity,
             "business_id": product.business_id,
             "business_name": product.business.business_name,
             "business_type": product.business.business_type,
@@ -347,6 +350,9 @@ def get_product_detail(product_id: int, db: Session = Depends(get_db)):
         "id": product.id,
         "name": product.name,
         "price": product.price,
+        "description": product.description,
+        "image_url": product.image_url,
+        "stock_quantity": product.stock_quantity,
         "business_id": product.business_id,
         "business_name": product.business.business_name,
         "business_type": product.business.business_type,
@@ -459,6 +465,9 @@ def create_product(
     db_product = Product(
         name=product_data.name,
         price=product_data.price,
+        description=product_data.description,
+        image_url=product_data.image_url,
+        stock_quantity=product_data.stock_quantity,
         business_id=business_id,
     )
 
@@ -472,6 +481,9 @@ def create_product(
             "id": db_product.id,
             "name": db_product.name,
             "price": db_product.price,
+            "description": db_product.description,
+            "image_url": db_product.image_url,
+            "stock_quantity": db_product.stock_quantity,
             "business_id": db_product.business_id,
         },
     }
@@ -518,6 +530,9 @@ def update_product(
 
     product.name = product_data.name
     product.price = product_data.price
+    product.description = product_data.description
+    product.image_url = product_data.image_url
+    product.stock_quantity = product_data.stock_quantity
 
     db.commit()
     db.refresh(product)
@@ -605,13 +620,37 @@ def create_order(order_data: OrderCreate, db: Session = Depends(get_db)):
     if not order_data.items:
         raise HTTPException(status_code=400, detail="Order must contain at least one item")
 
+    product_ids = [item.product_id for item in order_data.items]
+
+    if len(product_ids) != len(set(product_ids)):
+        raise HTTPException(
+            status_code=400,
+            detail="A product cannot appear more than once in an order",
+        )
+
     total_amount = 0.0
     item_payload = []
 
     for item in order_data.items:
         product = db.query(Product).filter(Product.id == item.product_id).first()
+
         if not product:
-            raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Product {item.product_id} not found",
+            )
+
+        if item.quantity <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Quantity must be greater than zero",
+            )
+
+        if item.quantity > product.stock_quantity:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Not enough stock for {product.name}. Available: {product.stock_quantity}",
+            )
 
         line_total = product.price * item.quantity
         total_amount += line_total
@@ -636,31 +675,48 @@ def create_order(order_data: OrderCreate, db: Session = Depends(get_db)):
                 detail="All items in one order must belong to the same business",
             )
 
-    db_order = Order(
-        customer_name=order_data.customer_name,
-        customer_email=order_data.customer_email,
-        payment_method=order_data.payment_method,
-        payment_status="paid",
-        status="paid",
-        total_amount=total_amount,
-        business_id=business_id,
-    )
-
-    db.add(db_order)
-    db.commit()
-    db.refresh(db_order)
-
-    for item in item_payload:
-        db_item = OrderItem(
-            order_id=db_order.id,
-            product_id=item["product_id"],
-            quantity=item["quantity"],
-            unit_price=item["unit_price"],
-            line_total=item["line_total"],
+    try:
+        db_order = Order(
+            customer_name=order_data.customer_name,
+            customer_email=order_data.customer_email,
+            payment_method=order_data.payment_method,
+            payment_status="paid",
+            status="paid",
+            total_amount=total_amount,
+            business_id=business_id,
         )
-        db.add(db_item)
 
-    db.commit()
+        db.add(db_order)
+        db.flush()
+
+        for item in item_payload:
+            product = db.query(Product).filter(
+                Product.id == item["product_id"]
+            ).with_for_update().first()
+
+            if not product or item["quantity"] > product.stock_quantity:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Insufficient stock to complete this order",
+                )
+
+            product.stock_quantity -= item["quantity"]
+
+            db_item = OrderItem(
+                order_id=db_order.id,
+                product_id=item["product_id"],
+                quantity=item["quantity"],
+                unit_price=item["unit_price"],
+                line_total=item["line_total"],
+            )
+            db.add(db_item)
+
+        db.commit()
+        db.refresh(db_order)
+
+    except Exception:
+        db.rollback()
+        raise
 
     return {
         "id": db_order.id,
