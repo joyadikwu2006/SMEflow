@@ -147,6 +147,7 @@ if (businessForm) {
                 setMessage(message, data.detail || "Something went wrong.", true);
             }
         } catch (error) {
+            console.error("Business creation error:", error);
             setMessage(message, "Unable to connect to the backend.", true);
         }
     });
@@ -154,6 +155,8 @@ if (businessForm) {
 
 
 async function loadStorefront() {
+    if (!storefrontList) return;
+
     try {
         const response = await fetch(`${API_URL}/products`);
         const products = await response.json();
@@ -354,54 +357,55 @@ productForm.addEventListener("submit", async function (event) {
     }
 });
 
+if (checkoutForm) {
+    checkoutForm.addEventListener("submit", async function (event) {
+        event.preventDefault();
 
-checkoutForm.addEventListener("submit", async function (event) {
-    event.preventDefault();
+        const customerName = document.getElementById("customerName").value.trim();
+        const customerEmail = document.getElementById("customerEmail").value.trim();
+        const paymentMethod = document.getElementById("paymentMethod").value;
+        const productId = checkoutProduct.value;
+        const quantity = Number(document.getElementById("checkoutQuantity").value);
 
-    const customerName = document.getElementById("customerName").value.trim();
-    const customerEmail = document.getElementById("customerEmail").value.trim();
-    const paymentMethod = document.getElementById("paymentMethod").value;
-    const productId = checkoutProduct.value;
-    const quantity = Number(document.getElementById("checkoutQuantity").value);
-
-    if (!customerName || !customerEmail || !paymentMethod || !productId || quantity <= 0) {
-        setMessage(checkoutMessage, "Please complete all checkout details.", true);
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_URL}/orders`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                customer_name: customerName,
-                customer_email: customerEmail,
-                payment_method: paymentMethod,
-                items: [{
-                    product_id: Number(productId),
-                    quantity: quantity
-                }]
-            })
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-            setMessage(checkoutMessage, `Payment successful! Total: ₦${Number(data.total_amount).toLocaleString()}`);
-            checkoutForm.reset();
-            document.getElementById("checkoutQuantity").value = 1;
-            await loadStorefront();
-            await updateDashboardStats();
-            await loadOrders();
-        } else {
-            setMessage(checkoutMessage, data.detail || "Checkout failed.", true);
+        if (!customerName || !customerEmail || !paymentMethod || !productId || quantity <= 0) {
+            setMessage(checkoutMessage, "Please complete all checkout details.", true);
+            return;
         }
-    } catch (error) {
-        setMessage(checkoutMessage, "Unable to process payment right now.", true);
-    }
-});
+
+        try {
+            const response = await fetch(`${API_URL}/orders`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    customer_name: customerName,
+                    customer_email: customerEmail,
+                    payment_method: paymentMethod,
+                    items: [{
+                        product_id: Number(productId),
+                        quantity: quantity
+                    }]
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                setMessage(checkoutMessage, `Payment successful! Total: ₦${Number(data.total_amount).toLocaleString()}`);
+                checkoutForm.reset();
+                document.getElementById("checkoutQuantity").value = 1;
+                await loadStorefront();
+                await updateDashboardStats();
+                await loadOrders();
+            } else {
+                setMessage(checkoutMessage, data.detail || "Checkout failed.", true);
+            }
+        } catch (error) {
+            setMessage(checkoutMessage, "Unable to process payment right now.", true);
+        }
+    });
+}
 
 
 async function deleteBusiness(businessId) {

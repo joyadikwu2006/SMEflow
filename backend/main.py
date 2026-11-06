@@ -117,33 +117,29 @@ def customer_login(credentials: LoginRequest):
 def create_payment_intent(payment: PaymentIntentRequest):
     stripe_secret_key = os.getenv("STRIPE_SECRET_KEY")
 
-    if stripe_secret_key:
-        try:
-            import stripe
+    if not stripe_secret_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Stripe payments are not configured on this server.",
+        )
+    try:
+        import stripe
 
-            stripe.api_key = stripe_secret_key
-            intent = stripe.PaymentIntent.create(
-                amount=int(round(payment.amount * 100)),
-                currency=payment.currency.lower(),
-                receipt_email=payment.customer_email,
-            )
-            return {
-                "provider": "stripe",
-                "status": intent.status,
-                "client_secret": intent.client_secret,
-                "amount": payment.amount,
-                "currency": payment.currency,
-            }
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Payment gateway error: {exc}")
-
-    return {
-        "provider": "demo",
-        "status": "succeeded",
-        "client_secret": "demo-client-secret",
-        "amount": payment.amount,
-        "currency": payment.currency,
-    }
+        stripe.api_key = stripe_secret_key
+        intent = stripe.PaymentIntent.create(
+            amount=int(round(payment.amount * 100)),
+            currency=payment.currency.lower(),
+            receipt_email=payment.customer_email,
+        )
+        return {
+            "provider": "stripe",
+            "status": intent.status,
+            "client_secret": intent.client_secret,
+            "amount": payment.amount,
+            "currency": payment.currency,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Payment gateway error: {exc}")
 
 
 @app.post("/payments/create-checkout-session")
@@ -151,6 +147,11 @@ def create_checkout_session(payload: StripeCheckoutRequest, db: Session = Depend
     stripe_secret_key = os.getenv("STRIPE_SECRET_KEY")
     frontend_url = os.getenv("FRONTEND_URL", "http://127.0.0.1:5500")
 
+    if not stripe_secret_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Stripe payments are not configured on this server.",
+        )
     line_items = []
     total_amount = 0.0
 
@@ -171,42 +172,32 @@ def create_checkout_session(payload: StripeCheckoutRequest, db: Session = Depend
                 "quantity": item.quantity,
             }
         )
+    try:
+        import stripe
 
-    if stripe_secret_key:
-        try:
-            import stripe
+        stripe.api_key = stripe_secret_key
+        session = stripe.checkout.Session.create(
+            success_url=f"{frontend_url}/customer.html?checkout=success",
+            cancel_url=f"{frontend_url}/customer.html?checkout=cancelled",
+            mode="payment",
+            customer_email=payload.customer_email,
+            line_items=line_items,
+            metadata={
+                "customer_name": payload.customer_name,
+                "items": str([{"product_id": item.product_id, "quantity": item.quantity} for item in payload.items]),
+            },
+        )
+        return {
+            "provider": "stripe",
+            "status": getattr(session, "status", "open"),
+            "url": session.url,
+            "session_id": session.id,
+            "amount": total_amount,
+            "currency": payload.currency,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Stripe checkout error: {exc}")
 
-            stripe.api_key = stripe_secret_key
-            session = stripe.checkout.Session.create(
-                success_url=f"{frontend_url}/customer.html?checkout=success",
-                cancel_url=f"{frontend_url}/customer.html?checkout=cancelled",
-                mode="payment",
-                customer_email=payload.customer_email,
-                line_items=line_items,
-                metadata={
-                    "customer_name": payload.customer_name,
-                    "items": str([{"product_id": item.product_id, "quantity": item.quantity} for item in payload.items]),
-                },
-            )
-            return {
-                "provider": "stripe",
-                "status": getattr(session, "status", "open"),
-                "url": session.url,
-                "session_id": session.id,
-                "amount": total_amount,
-                "currency": payload.currency,
-            }
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Stripe checkout error: {exc}")
-
-    return {
-        "provider": "demo",
-        "status": "demo",
-        "url": f"{frontend_url}/customer.html?checkout=demo",
-        "session_id": "demo-checkout-session",
-        "amount": total_amount,
-        "currency": payload.currency,
-    }
 
 
 @app.post("/payments/webhook")
@@ -492,7 +483,6 @@ def update_business(
         },
     }
 
-
 @app.delete("/businesses/{business_id}")
 def delete_business(
     business_id: int,
@@ -680,6 +670,11 @@ def get_orders(db: Session = Depends(get_db)):
 
 @app.post("/orders")
 def create_order(order_data: OrderCreate, db: Session = Depends(get_db)):
+    if order_data.payment_method.lower() != "transfer":
+        raise HTTPException(
+            status_code=400,
+            detail="Only bank transfer orders can be created through this endpoint.",
+    )
     if not order_data.items:
         raise HTTPException(status_code=400, detail="Order must contain at least one item")
 
@@ -743,8 +738,8 @@ def create_order(order_data: OrderCreate, db: Session = Depends(get_db)):
             customer_name=order_data.customer_name,
             customer_email=order_data.customer_email,
             payment_method=order_data.payment_method,
-            payment_status="paid",
-            status="paid",
+            payment_status="pending",
+            status="pending",
             total_amount=total_amount,
             business_id=business_id,
         )
@@ -786,7 +781,7 @@ def create_order(order_data: OrderCreate, db: Session = Depends(get_db)):
         "customer_name": db_order.customer_name,
         "customer_email": db_order.customer_email,
         "payment_method": db_order.payment_method,
-        "payment_status": "paid",
+        "payment_status": db_order.payment_status,
         "status": db_order.status,
         "total_amount": db_order.total_amount,
         "business_id": db_order.business_id,
@@ -803,27 +798,44 @@ def create_order(order_data: OrderCreate, db: Session = Depends(get_db)):
 
 
 @app.patch("/orders/{order_id}/status")
-def update_order_status(order_id: int, update: OrderStatusUpdate, db: Session = Depends(get_db)):
+def update_order_status(
+    order_id: int,
+    update: OrderStatusUpdate,
+    owner: dict = Depends(require_owner_session),
+    db: Session = Depends(get_db),
+):
     order = db.query(Order).filter(Order.id == order_id).first()
 
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    valid_statuses = {"pending", "paid", "processing", "shipped", "delivered", "cancelled"}
+    valid_statuses = {
+        "pending", "paid", "processing",
+        "shipped", "delivered", "cancelled"
+    }
     status_value = update.status.strip().lower()
 
     if status_value not in valid_statuses:
         raise HTTPException(status_code=400, detail="Invalid order status")
 
-    order.status = status_value
     if status_value == "paid":
+        if order.payment_method.lower() != "transfer":
+            raise HTTPException(
+                status_code=400,
+                detail="Stripe payments must be confirmed by the Stripe webhook.",
+            )
         order.payment_status = "paid"
+
+    order.status = status_value
 
     db.commit()
     db.refresh(order)
 
-    return {"id": order.id, "status": order.status, "payment_status": order.payment_status}
-
+    return {
+        "id": order.id,
+        "status": order.status,
+        "payment_status": order.payment_status,
+    }
 
 @app.get("/orders/{order_id}")
 def get_order(order_id: int, db: Session = Depends(get_db)):

@@ -198,37 +198,6 @@ logoutCustomer.addEventListener("click", function () {
     updateCart();
 });
 
-async function finalizeCheckoutFromSavedState() {
-    const pendingCheckout = JSON.parse(localStorage.getItem("pendingCheckout") || "null");
-    if (!pendingCheckout) {
-        return;
-    }
-
-    try {
-        const orderResponse = await fetch(`${API_URL}/orders`, {
-            method: "POST",
-            headers: getAuthHeaders({ "Content-Type": "application/json" }),
-            body: JSON.stringify({
-                customer_name: pendingCheckout.customer_name,
-                customer_email: pendingCheckout.customer_email,
-                payment_method: pendingCheckout.payment_method || "stripe",
-                items: pendingCheckout.items,
-            }),
-        });
-
-        const orderData = await orderResponse.json();
-        if (orderResponse.ok) {
-            setMessage(checkoutMessage, `Payment successful! Total: ₦${Number(orderData.total_amount).toLocaleString()}`);
-            localStorage.removeItem("pendingCheckout");
-            cart = [];
-            updateCart();
-            checkoutForm.reset();
-            await loadStorefront();
-        }
-    } catch (error) {
-        console.error("Could not finalize checkout state:", error);
-    }
-}
 
 checkoutForm.addEventListener("submit", async function (event) {
     event.preventDefault();
@@ -289,23 +258,6 @@ checkoutForm.addEventListener("submit", async function (event) {
             }
         }
 
-        const paymentResponse = await fetch(`${API_URL}/payments/create-intent`, {
-            method: "POST",
-            headers: getAuthHeaders({ "Content-Type": "application/json" }),
-            body: JSON.stringify({
-                amount: totalAmount,
-                currency: "NGN",
-                customer_email: customerEmail,
-            }),
-        });
-
-        const paymentData = await paymentResponse.json();
-
-        if (!paymentResponse.ok) {
-            setMessage(checkoutMessage, paymentData.detail || "Payment failed.", true);
-            return;
-        }
-
         const orderResponse = await fetch(`${API_URL}/orders`, {
             method: "POST",
             headers: getAuthHeaders({ "Content-Type": "application/json" }),
@@ -320,7 +272,10 @@ checkoutForm.addEventListener("submit", async function (event) {
         const orderData = await orderResponse.json();
 
         if (orderResponse.ok) {
-            setMessage(checkoutMessage, `Payment successful! Total: ₦${Number(orderData.total_amount).toLocaleString()}`);
+            setMessage(
+                checkoutMessage,
+                `Order placed successfully. Payment is pending confirmation. Total: ₦${Number(orderData.total_amount).toLocaleString()}`
+            );
             cart = [];
             updateCart();
             checkoutForm.reset();
@@ -345,7 +300,7 @@ if (savedCustomerSession) {
 const checkoutState = new URLSearchParams(window.location.search).get("checkout");
 if (checkoutState === "success") {
     localStorage.removeItem("pendingCheckout");
-    setMessage(checkoutMessage, "Payment completed successfully. Your order is being processed.");
+    setMessage(checkoutMessage, "We received your return from Stripe. We are waiting for payment confirmation.");
 } else if (checkoutState === "cancelled") {
     localStorage.removeItem("pendingCheckout");
     setMessage(checkoutMessage, "Checkout was cancelled. Your cart is still available.", true);

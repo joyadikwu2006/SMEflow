@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
 from backend.database import Base, engine
+from backend.models import Order
 from backend.main import app, get_db
 
 
@@ -145,6 +146,43 @@ def test_owner_routes_require_valid_session_token():
     )
     assert authorized_response.status_code == 200
 
+def test_payment_intent_returns_503_without_stripe_secret(monkeypatch):
+    monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
+
+    response = client.post(
+        "/payments/create-intent",
+        json={
+            "amount": 1000,
+            "currency": "NGN",
+            "customer_email": "jane@example.com",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Stripe payments are not configured on this server."
+    )
+    assert "status" not in response.json()
+
+
+def test_checkout_session_returns_503_without_stripe_secret(monkeypatch):
+    monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
+
+    response = client.post(
+        "/payments/create-checkout-session",
+        json={
+            "items": [{"product_id": 999999, "quantity": 1}],
+            "customer_name": "Jane Doe",
+            "customer_email": "jane@example.com",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Stripe payments are not configured on this server."
+    )
+    assert "url" not in response.json()
+
 
 def test_checkout_session_uses_stripe_when_configured(monkeypatch):
     os.environ["STRIPE_SECRET_KEY"] = "sk_test_123"
@@ -209,7 +247,7 @@ def test_stripe_webhook_confirms_completed_checkout(monkeypatch):
                         "customer_email": "jane@example.com",
                         "metadata": {
                             "customer_name": "Jane Doe",
-                            "items": f'[{{"product_id": {product_id_holder["id"]}, "quantity": 2}}]',                        
+                            "items": f'[{{"product_id": {product_id_holder["id"]}, "quantity": 2}}]',
                         },
                     }
                 },
@@ -273,7 +311,7 @@ def test_stripe_webhook_confirms_completed_checkout(monkeypatch):
         if product["id"] == product_id
     )
     assert webhook_product["stock_quantity"] == 0
-    
+
 def test_customer_can_buy_products():
     owner_login = client.post(
         "/auth/owner/login",
@@ -304,7 +342,7 @@ def test_customer_can_buy_products():
         json={
             "customer_name": "Jane Doe",
             "customer_email": "jane@example.com",
-            "payment_method": "card",
+            "payment_method": "transfer",
             "items": [{"product_id": product_id, "quantity": 2}],
         },
     )
@@ -312,7 +350,7 @@ def test_customer_can_buy_products():
     assert order_response.status_code == 200, order_response.text
     payload = order_response.json()
     assert payload["total_amount"] == 500.0
-    assert payload["payment_status"] == "paid"
+    assert payload["payment_status"] == "pending"
     assert payload["items"][0]["quantity"] == 2
 
     products_response = client.get("/products")
@@ -327,7 +365,7 @@ def test_customer_can_buy_products():
         json={
             "customer_name": "Jane Doe",
             "customer_email": "jane@example.com",
-            "payment_method": "card",
+            "payment_method": "transfer",
             "items": [{"product_id": product_id, "quantity": 1}],
         },
     )
@@ -338,7 +376,35 @@ def test_customer_can_buy_products():
 
     status_update = client.patch(
         f"/orders/{order_response.json()['id']}/status",
-        json={"status": "shipped"},
+        json={"status": "paid"},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert status_update.status_code == 200
-    assert status_update.json()["status"] == "shipped"
+    assert status_update.json()["payment_status"] == "paid"
+
+    shipping_update = client.patch(
+        f"/orders/{order_response.json()['id']}/status",
+        json={"status": "shipped"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert shipping_update.status_code == 200
+    assert shipping_update.json()["status"] == "shipped"
+
+def test_owner_cannot_manually_mark_stripe_payment_as_paid():
+    owner_login = client.post(
+        "/auth/owner/login",
+        json={"username": "owner", "password": "owner123"},
+    )
+    token = owner_login.json()["token"]
+
+    order_response = client.post(
+        "/orders",
+        json={
+            "customer_name": "Jane Doe",
+            "customer_email": "jane@example.com",
+            "payment_method": "stripe",
+            "items": [],
+        },
+    )
+
+    assert order_response.status_code == 400
