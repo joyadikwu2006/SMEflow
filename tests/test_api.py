@@ -186,38 +186,69 @@ def test_checkout_session_returns_503_without_stripe_secret(monkeypatch):
 
 def test_checkout_session_uses_stripe_when_configured(monkeypatch):
     os.environ["STRIPE_SECRET_KEY"] = "sk_test_123"
+    stripe_calls = []
 
     class FakeSession:
-        def __init__(self):
-            self.url = "https://checkout.stripe.com/test_session"
-            self.id = "cs_test_123"
-            self.status = "open"
-            self.amount_total = 2000
+        url = "https://checkout.stripe.com/test_session"
+        id = "cs_test_123"
+        status = "open"
+
+    def fake_create(**kwargs):
+        stripe_calls.append(kwargs)
+        return FakeSession()
 
     class FakeStripeModule:
-        def __init__(self):
-            self.checkout = type("Checkout", (), {"Session": type("Session", (), {"create": staticmethod(lambda **kwargs: FakeSession())})})()
+        checkout = type(
+            "Checkout",
+            (),
+            {
+                "Session": type(
+                    "Session",
+                    (),
+                    {"create": staticmethod(fake_create)},
+                )
+            },
+        )()
 
-    monkeypatch.setitem(__import__("sys").modules, "stripe", FakeStripeModule())
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "stripe",
+        FakeStripeModule(),
+    )
+
+    owner_login = client.post(
+        "/auth/owner/login",
+        json={"username": "owner", "password": "owner123"},
+    )
+    token = owner_login.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
 
     business_response = client.post(
         "/businesses",
         json={"business_name": "Stripe Shop", "business_type": "Retail"},
-        headers={"Authorization": f"Bearer {client.post('/auth/owner/login', json={'username': 'owner', 'password': 'owner123'}).json()['token']}"},
+        headers=headers,
     )
     business_id = business_response.json()["business"]["id"]
 
-    product_response = client.post(
+    first_product = client.post(
         f"/businesses/{business_id}/products",
         json={"name": "Headphones", "price": 20.0},
-        headers={"Authorization": f"Bearer {client.post('/auth/owner/login', json={'username': 'owner', 'password': 'owner123'}).json()['token']}"},
-    )
-    product_id = product_response.json()["product"]["id"]
+        headers=headers,
+    ).json()["product"]["id"]
+
+    second_product = client.post(
+        f"/businesses/{business_id}/products",
+        json={"name": "Keyboard", "price": 35.0},
+        headers=headers,
+    ).json()["product"]["id"]
 
     checkout_response = client.post(
         "/payments/create-checkout-session",
         json={
-            "items": [{"product_id": product_id, "quantity": 1}],
+            "items": [
+                {"product_id": first_product, "quantity": 2},
+                {"product_id": second_product, "quantity": 1},
+            ],
             "customer_name": "Jane Doe",
             "customer_email": "jane@example.com",
         },
@@ -225,8 +256,21 @@ def test_checkout_session_uses_stripe_when_configured(monkeypatch):
 
     assert checkout_response.status_code == 200
     assert checkout_response.json()["provider"] == "stripe"
-    assert checkout_response.json()["url"] == "https://checkout.stripe.com/test_session"
+    assert checkout_response.json()["url"] == (
+        "https://checkout.stripe.com/test_session"
+    )
 
+    assert len(stripe_calls) == 1
+
+    line_items = stripe_calls[0]["line_items"]
+    assert len(line_items) == 2
+    assert line_items[0]["price_data"]["product_data"]["name"] == "Headphones"
+    assert line_items[0]["price_data"]["unit_amount"] == 2000
+    assert line_items[0]["quantity"] == 2
+    assert line_items[1]["price_data"]["product_data"]["name"] == "Keyboard"
+    assert line_items[1]["price_data"]["unit_amount"] == 3500
+    assert line_items[1]["quantity"] == 1
+    assert checkout_response.json()["amount"] == 75.0
 
 def test_stripe_webhook_confirms_completed_checkout(monkeypatch):
     os.environ["STRIPE_SECRET_KEY"] = "sk_test_123"
