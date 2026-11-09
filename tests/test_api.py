@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
 from backend.database import Base, engine
-from backend.models import Order
+from backend.models import Business, Order
 from backend.main import app, get_db
 
 
@@ -397,14 +397,45 @@ def test_owner_cannot_manually_mark_stripe_payment_as_paid():
     )
     token = owner_login.json()["token"]
 
-    order_response = client.post(
-        "/orders",
-        json={
-            "customer_name": "Jane Doe",
-            "customer_email": "jane@example.com",
-            "payment_method": "stripe",
-            "items": [],
-        },
+    db = TestingSessionLocal()
+
+    try:
+        business = Business(
+            business_name="Test Store",
+            business_type="Retail",
+        )
+        db.add(business)
+        db.commit()
+        db.refresh(business)
+
+        order = Order(
+            customer_name="Jane Doe",
+            customer_email="jane@example.com",
+            payment_method="stripe",
+            payment_status="pending",
+            status="pending",
+            total_amount=1000,
+            business_id=business.id,
+        )
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+        order_id = order.id
+    finally:
+        db.close()
+
+    response = client.patch(
+        f"/orders/{order_id}/status",
+        json={"status": "paid"},
+        headers={"Authorization": f"Bearer {token}"},
     )
 
-    assert order_response.status_code == 400
+    assert response.status_code == 400
+    assert "Stripe payments must be confirmed" in response.json()["detail"]
+
+    db = TestingSessionLocal()
+    try:
+        saved_order = db.query(Order).filter(Order.id == order_id).first()
+        assert saved_order.payment_status == "pending"
+    finally:
+        db.close()
