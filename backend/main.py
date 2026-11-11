@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import jwt
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from backend.database import Base, SessionLocal, engine
@@ -152,22 +153,40 @@ def create_checkout_session(payload: StripeCheckoutRequest, db: Session = Depend
             status_code=503,
             detail="Stripe payments are not configured on this server.",
         )
+    product_ids = [item.product_id for item in payload.items]
+    if len(product_ids) != len(set(product_ids)):
+        raise HTTPException(
+            status_code=400,
+            detail="A product cannot appear more than once in a checkout",
+        )
+
     line_items = []
     total_amount = 0.0
+    total_amount_minor = 0
+    checkout_items = []
 
     for item in payload.items:
         product = db.query(Product).filter(Product.id == item.product_id).first()
         if not product:
             raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
 
-        line_total = product.price * item.quantity
+        unit_amount = int(round(product.price * 100))
+        line_total = (unit_amount / 100) * item.quantity
         total_amount += line_total
+        total_amount_minor += unit_amount * item.quantity
+        checkout_items.append(
+            {
+                "product_id": item.product_id,
+                "quantity": item.quantity,
+                "unit_amount": unit_amount,
+            }
+        )
         line_items.append(
             {
                 "price_data": {
                     "currency": payload.currency.lower(),
                     "product_data": {"name": product.name},
-                    "unit_amount": int(round(product.price * 100)),
+                    "unit_amount": unit_amount,
                 },
                 "quantity": item.quantity,
             }
@@ -184,7 +203,9 @@ def create_checkout_session(payload: StripeCheckoutRequest, db: Session = Depend
             line_items=line_items,
             metadata={
                 "customer_name": payload.customer_name,
-                "items": str([{"product_id": item.product_id, "quantity": item.quantity} for item in payload.items]),
+                "items": json.dumps(checkout_items, separators=(",", ":")),
+                "currency": payload.currency.lower(),
+                "amount_total": str(total_amount_minor),
             },
         )
         return {
@@ -237,6 +258,29 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         return {"status": "payment_not_completed", "orders": []}
 
     metadata = session.get("metadata") or {}
+    try:
+        expected_amount_minor = int(metadata["amount_total"])
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid checkout payment metadata")
+
+    actual_amount_minor = session.get("amount_total")
+    if (
+        isinstance(actual_amount_minor, bool)
+        or not isinstance(actual_amount_minor, int)
+        or actual_amount_minor != expected_amount_minor
+    ):
+        raise HTTPException(status_code=400, detail="Stripe payment amount does not match checkout")
+
+    expected_currency = metadata.get("currency")
+    actual_currency = session.get("currency")
+    if (
+        not isinstance(expected_currency, str)
+        or not expected_currency
+        or not isinstance(actual_currency, str)
+        or actual_currency.lower() != expected_currency.lower()
+    ):
+        raise HTTPException(status_code=400, detail="Stripe payment currency does not match checkout")
+
     customer_name = metadata.get("customer_name") or "Customer"
     customer_email = (
         session.get("customer_email")
@@ -254,11 +298,13 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
 
     grouped_items = {}
     seen_product_ids = set()
+    items_amount_minor = 0
 
     for item in items:
         try:
             product_id = int(item["product_id"])
             quantity = int(item["quantity"])
+            unit_amount = int(item["unit_amount"])
         except (KeyError, TypeError, ValueError):
             raise HTTPException(status_code=400, detail="Invalid checkout item")
 
@@ -272,29 +318,51 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         if quantity <= 0:
             raise HTTPException(status_code=400, detail="Quantity must be greater than zero")
 
+        if unit_amount <= 0:
+            raise HTTPException(status_code=400, detail="Invalid checkout item price")
+        items_amount_minor += unit_amount * quantity
+
         product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
             raise HTTPException(status_code=404, detail=f"Product {product_id} not found")
-
-        if quantity > product.stock_quantity:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Insufficient stock for product {product_id}",
-            )
 
         grouped_items.setdefault(product.business_id, []).append(
             {
                 "product": product,
                 "quantity": quantity,
-                "unit_price": product.price,
+                "unit_price": unit_amount / 100,
             }
         )
 
+    if items_amount_minor != expected_amount_minor:
+        raise HTTPException(status_code=400, detail="Checkout item totals do not match payment amount")
+
+    stock_reservations = sorted(
+        (item for business_items in grouped_items.values() for item in business_items),
+        key=lambda item: item["product"].id,
+    )
     created_orders = []
 
     try:
         db.add(ProcessedStripeSession(session_id=session_id))
         db.flush()
+
+        for item in stock_reservations:
+            product_id = item["product"].id
+            result = db.execute(
+                update(Product)
+                .where(
+                    Product.id == product_id,
+                    Product.stock_quantity >= item["quantity"],
+                )
+                .values(stock_quantity=Product.stock_quantity - item["quantity"])
+                .execution_options(synchronize_session=False)
+            )
+            if result.rowcount != 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Insufficient stock for product {product_id}",
+                )
 
         for business_id, business_items in grouped_items.items():
             total_amount = sum(
@@ -314,13 +382,10 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             db.flush()
 
             for item in business_items:
-                product = item["product"]
-                product.stock_quantity -= item["quantity"]
-
                 db.add(
                     OrderItem(
                         order_id=order.id,
-                        product_id=product.id,
+                        product_id=item["product"].id,
                         quantity=item["quantity"],
                         unit_price=item["unit_price"],
                         line_total=item["unit_price"] * item["quantity"],
@@ -704,12 +769,6 @@ def create_order(order_data: OrderCreate, db: Session = Depends(get_db)):
                 detail="Quantity must be greater than zero",
             )
 
-        if item.quantity > product.stock_quantity:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Not enough stock for {product.name}. Available: {product.stock_quantity}",
-            )
-
         line_total = product.price * item.quantity
         total_amount += line_total
         item_payload.append(
@@ -747,19 +806,25 @@ def create_order(order_data: OrderCreate, db: Session = Depends(get_db)):
         db.add(db_order)
         db.flush()
 
-        for item in item_payload:
-            product = db.query(Product).filter(
-                Product.id == item["product_id"]
-            ).with_for_update().first()
-
-            if not product or item["quantity"] > product.stock_quantity:
+        for item in sorted(item_payload, key=lambda item: item["product_id"]):
+            result = db.execute(
+                update(Product)
+                .where(
+                    Product.id == item["product_id"],
+                    Product.stock_quantity >= item["quantity"],
+                )
+                .values(
+                    stock_quantity=Product.stock_quantity - item["quantity"]
+                )
+                .execution_options(synchronize_session=False)
+            )
+            if result.rowcount != 1:
                 raise HTTPException(
                     status_code=400,
                     detail="Insufficient stock to complete this order",
                 )
 
-            product.stock_quantity -= item["quantity"]
-
+        for item in item_payload:
             db_item = OrderItem(
                 order_id=db_order.id,
                 product_id=item["product_id"],
